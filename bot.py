@@ -97,12 +97,26 @@ def links(update, context):
                 parse_mode=ParseMode.HTML
             )
 
+def start(update, context):
+    if not _is_valid_user(update):
+        return None
+
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text='Hello! Paste an assembla ticket link to get started!'
+    )
+
 
 def main():
     logging.info('Launching')
+
     updater = Updater(token=os.environ.get('TELEGRAM_TOKEN'), use_context=True)
     dispatcher = updater.dispatcher
-    link_handler = MessageHandler(Filters.text, links)
+
+    start_handler = CommandHandler('start', start)
+    dispatcher.add_handler(start_handler)
+
+    link_handler = MessageHandler(Filters.all, links)
     dispatcher.add_handler(link_handler)
 
     updater.start_polling()
