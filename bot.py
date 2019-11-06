@@ -68,8 +68,7 @@ def _handle_ticket_url(url: str):
 
 def _is_valid_user(update):
     user = update.message.from_user
-    print('User', user)
-    if user.username in ALLOWED_USERS or user.id in ALLOWED_USERS:
+    if user.username in ALLOWED_USERS or str(user.id) in ALLOWED_USERS:
         return True
     else:
         logging.warn(f'Unknown User: {update.message.from_user.username}')
