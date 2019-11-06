@@ -66,15 +66,18 @@ def _handle_ticket_url(url: str):
                 return _get_ticket_message(ticket)
 
 
-def start(update, context):
+def _is_valid_user(update):
     if update.message.from_user.username in ALLOWED_USERS:
-        context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text='You are authorised to have this chat!'
-        )
+        return True
+    else:
+        logging.warn(f'Unknown User: {update.message.from_user.username}')
+        return False
 
 
 def links(update, context):
+    if not _is_valid_user(update):
+        return None
+
     text = update.message.text
     url_entities = [x for x in update.message.entities if x['type'] == 'url']
     ticket_urls = []
@@ -98,10 +101,7 @@ def links(update, context):
 def main():
     logging.info('Launching')
     updater = Updater(token=os.environ.get('TELEGRAM_TOKEN'), use_context=True)
-    start_handler = CommandHandler('start', start)
     dispatcher = updater.dispatcher
-    dispatcher.add_handler(start_handler)
-
     link_handler = MessageHandler(Filters.text, links)
     dispatcher.add_handler(link_handler)
 
