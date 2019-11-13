@@ -2,6 +2,9 @@ import os
 import requests
 import re
 import logging
+
+from cache import Cache
+
 from telegram import ParseMode
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
@@ -19,26 +22,41 @@ ASSEMBLA_HEADERS = {
     'X-Api-Secret': os.environ.get('ASSEMBLA_SECRET'),
 }
 
-def _fetch_users():
-    response = requests.get(
-        f'{ASSEMBLA_API_BASE}v1/spaces/{WORKSPACE_ID}/users',
-        headers=ASSEMBLA_HEADERS,
-    )
+cache = Cache()
+
+def _fetch_cached(url, timeout=60):
+    cached = cache.get(url)
+    if cached:
+        return cached
+
+    response = requests.get(url, headers=ASSEMBLA_HEADERS)
+    logging.info('Cache Miss: {}'.format(url))
 
     if response.status_code == 200:
-        return {u['id']: u['name'] for u in response.json()}
+        data = response.json()
+        cache.set(url, data, timeout)
+        return data
 
-ASSEMBLA_USERS = _fetch_users()
+
+def _fetch_users():
+    users = _fetch_cached(
+        f'{ASSEMBLA_API_BASE}v1/spaces/{WORKSPACE_ID}/users',
+        600
+    )
+
+    return {u['id']: u['name'] for u in users}
+
+
+def _fetch_milestones():
+    return _fetch_cached(
+        f'{ASSEMBLA_API_BASE}v1/spaces/{WORKSPACE_ID}/milestones',
+    )
 
 
 def _fetch_ticket_info(ticket_id: int):
-    response = requests.get(
+    return _fetch_cached(
         f'{ASSEMBLA_API_BASE}v1/spaces/{WORKSPACE_ID}/tickets/{ticket_id}',
-        headers=ASSEMBLA_HEADERS,
     )
-
-    if response.status_code == 200:
-        return response.json()
 
 
 def _get_ticket_message(ticket):
@@ -46,7 +64,8 @@ def _get_ticket_message(ticket):
     summary = ticket.get('summary')
     description = ticket.get('description')
     status = ticket.get('status')
-    user = ASSEMBLA_USERS.get(ticket.get('assigned_to_id'), '')
+    assembla_users = _fetch_users()
+    user = assembla_users.get(ticket.get('assigned_to_id'), '')
 
     return f"""
 <strong>#{number} {summary}</strong>
@@ -108,6 +127,26 @@ def start(update, context):
     )
 
 
+def sprint(update, context):
+    if not _is_valid_user(update):
+        return None
+
+    milestones = _fetch_milestones()
+    if len(milestones):
+        title = milestones[0].get('title')
+        branch = title.replace(' ', '-').lower()
+        start_date = milestones[0].get('start_date')
+        text = f'{title} ({start_date})  -  <code>{branch}</code>'
+    else:
+        text = 'No Active sprint'
+
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text,
+        parse_mode=ParseMode.HTML
+    )
+
+
 def main():
     logging.info('Launching')
 
@@ -116,6 +155,8 @@ def main():
 
     start_handler = CommandHandler('start', start)
     dispatcher.add_handler(start_handler)
+
+    dispatcher.add_handler(CommandHandler('sprint', sprint))
 
     link_handler = MessageHandler(Filters.all, links)
     dispatcher.add_handler(link_handler)
