@@ -5,8 +5,10 @@ import logging
 
 from cache import Cache
 
-from telegram import ParseMode
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import ParseMode, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import (
+    Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
+)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -20,6 +22,13 @@ ASSEMBLA_API_BASE = 'https://api.assembla.com/'
 ASSEMBLA_HEADERS = {
     'X-Api-Key': os.environ.get('ASSEMBLA_KEY'),
     'X-Api-Secret': os.environ.get('ASSEMBLA_SECRET'),
+    'Content-Type': 'application/json',
+}
+
+STATUS_BUTTONS = {
+    749754: 'New',
+    749756: 'Development',
+    3774573: 'Test.ppj',
 }
 
 cache = Cache()
@@ -67,22 +76,45 @@ def _get_ticket_message(ticket):
     assembla_users = _fetch_users()
     user = assembla_users.get(ticket.get('assigned_to_id'), '')
 
+    print(ticket)
+
     return f"""
 <strong>#{number} {summary}</strong>
 <pre>{description}</pre>
 <code>{status}</code> {user}
 """
 
-
-def _handle_ticket_url(url: str):
+def _get_ticket_id(url: str):
     match = re.search(r'ticket=(\d+)|tickets\/(\d+)', url)
 
     if match:
         group = [g for g in match.groups() if g]
         if len(group):
-            ticket = _fetch_ticket_info(int(group[0]))
-            if ticket:
-                return _get_ticket_message(ticket)
+            return group[0]
+
+
+def _render_ticket_info(update, context, ticket_id):
+    if not ticket_id:
+        return
+
+    ticket = _fetch_ticket_info(int(ticket_id))
+    keyboard = []
+    for status_id in STATUS_BUTTONS:
+        print(status_id, ticket.get('status'))
+        if status_id != ticket.get('status'):
+            keyboard.append(
+                InlineKeyboardButton(
+                    STATUS_BUTTONS[status_id],
+                    callback_data=f'{ticket_id},{status_id}'
+                )
+            )
+
+    logging.info(f'Ticket Reply {update.message.from_user.username} {ticket_id}')
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=_get_ticket_message(ticket),
+        parse_mode=ParseMode.HTML,
+    )
 
 
 def _is_valid_user(update):
@@ -108,14 +140,8 @@ def links(update, context):
             ticket_urls.append(url)
 
     for url in ticket_urls:
-        message = _handle_ticket_url(url)
-        if message:
-            logging.info(f'Ticket Reply {update.message.from_user.username}')
-            context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=message,
-                parse_mode=ParseMode.HTML
-            )
+        ticket_id = _get_ticket_id(url)
+        _render_ticket_info(update, context, ticket_id)
 
 def start(update, context):
     if not _is_valid_user(update):
@@ -143,7 +169,34 @@ def sprint(update, context):
     context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=text,
-        parse_mode=ParseMode.HTML
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup,
+    )
+
+
+def ticket(update, context):
+    if not _is_valid_user(update):
+        return None
+
+    match = re.search('\d+', update.message.text)
+    if not match:
+        return None
+
+    _render_ticket_info(update, context, match.group(0))
+
+
+def button(update, context):
+    query = update.callback_query
+    ticket_id, status_id = query.data.split(',')
+
+    url = f'{ASSEMBLA_API_BASE}v1/spaces/{WORKSPACE_ID}/tickets/{ticket_id}'
+    data = {
+        'ticket': {
+            'status': status_id
+        }
+    }
+    response = requests.put(
+        url, json=data, headers=ASSEMBLA_HEADERS
     )
 
 
@@ -157,9 +210,12 @@ def main():
     dispatcher.add_handler(start_handler)
 
     dispatcher.add_handler(CommandHandler('sprint', sprint))
+    dispatcher.add_handler(CommandHandler('ticket', ticket))
 
     link_handler = MessageHandler(Filters.all, links)
     dispatcher.add_handler(link_handler)
+
+    dispatcher.add_handler(CallbackQueryHandler(button))
 
     updater.start_polling()
 
