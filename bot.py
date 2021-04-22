@@ -50,7 +50,7 @@ def _is_valid_user(update):
     if user.username in ALLOWED_USERS or str(user.id) in ALLOWED_USERS:
         return True
     else:
-        logging.warn(f"Unknown User: {update.message.from_user.username}")
+        logging.warning(f"Unknown User: {update.message.from_user.username}")
         return False
 
 
