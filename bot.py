@@ -21,6 +21,8 @@ logging.basicConfig(
 
 ALLOWED_USERS = os.environ.get("ALLOWED_USERS", "").split(",")
 
+HANDLERS = [jira, assembla]
+
 
 def _get_ticket_message(ticket):
     number = ticket.get("number")
@@ -60,26 +62,17 @@ def links(update, context):
 
     text = update.message.text
     url_entities = [x for x in update.message.entities if x["type"] == "url"]
-    assembla_urls = []
 
-    jira_urls = []
+    urls = [
+        text[entity.offset : entity.offset + entity.length] for entity in url_entities
+    ]
 
-    for entity in url_entities:
-        url = text[entity.offset : entity.offset + entity.length]
-
-        # Assembla
-        if "ticket=" in url or "tickets/" in url:
-            assembla_urls.append(url)
-
-        # Jira
-        if "browse/APP-" in url:
-            jira_urls.append(url)
-
-    for url in assembla_urls:
-        render_ticket(update, context, assembla.fetch_ticket_from_link(url))
-
-    for url in jira_urls:
-        render_ticket(update, context, jira.fetch_ticket_from_link(url))
+    for url in urls:
+        for handler in HANDLERS:
+            ticket_id = getattr(handler, "get_ticket_id")(url)
+            if ticket_id:
+                ticket = getattr(handler, "fetch_ticket_by_id")(ticket_id)
+                render_ticket(update, context, ticket)
 
 
 def start(update, context):

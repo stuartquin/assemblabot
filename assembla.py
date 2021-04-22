@@ -35,15 +35,15 @@ def fetch_milestones():
     )
 
 
-def fetch_ticket(ticket_id: int):
-    return fetch_cached(
+def fetch_ticket_by_id(ticket_id: str) -> dict:
+    ticket = fetch_cached(
         f"{ASSEMBLA_API_BASE}v1/spaces/{WORKSPACE_ID}/tickets/{ticket_id}",
         ASSEMBLA_HEADERS,
     )
-
-
-def fetch_ticket_from_link(link: str) -> dict:
-    ticket = fetch_ticket(get_ticket_id(link))
     users = fetch_users()
     ticket["user"] = users.get(ticket.get("assigned_to_id"), "")
     return ticket
+
+
+def fetch_ticket_from_link(link: str) -> dict:
+    return fetch_ticket_by_id(get_ticket_id(link))

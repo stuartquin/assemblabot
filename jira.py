@@ -18,16 +18,19 @@ def get_ticket_id(url: str):
             return f"APP-{group[0]}"
 
 
-def fetch_ticket_from_link(link: str) -> dict:
-    issue_id = get_ticket_id(link)
-    issue = fetch_cached(f"{JIRA_API_BASE}issue/{issue_id}", JIRA_HEADERS)
+def fetch_ticket_by_id(ticket_id: str) -> dict:
+    issue = fetch_cached(f"{JIRA_API_BASE}issue/{ticket_id}", JIRA_HEADERS)
     fields = issue["fields"]
 
     return {
-        "id": issue_id,
+        "id": ticket_id,
         "user": fields["assignee"]["displayName"],
-        "number": issue_id,
+        "number": ticket_id,
         "description": fields["description"],
         "summary": fields["summary"],
         "status": fields["status"]["name"],
     }
+
+
+def fetch_ticket_from_link(link: str) -> dict:
+    return fetch_ticket_by_id(get_ticket_id(link))
