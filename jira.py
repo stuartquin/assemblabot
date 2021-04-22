@@ -10,7 +10,7 @@ JIRA_HEADERS = {"Authorization": f"Basic {os.environ.get('JIRA_KEY')}"}
 
 
 def get_ticket_id(url: str):
-    match = re.search(r"APP-(\d+)", url)
+    match = re.search(r"selectedIssue=APP-(\d+)|APP-(\d+)", url)
 
     if match:
         group = [g for g in match.groups() if g]
